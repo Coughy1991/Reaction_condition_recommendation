@@ -1,7 +1,6 @@
 import numpy as np
 from keras.models import model_from_json
 from keras import backend as K
-import makeit.utilities.fingerprinting as fp
 from scipy import stats
 import pickle
 from rdkit import Chem
