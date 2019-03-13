@@ -5,7 +5,7 @@ from keras.models import Sequential, Model, model_from_json
 from keras.layers import Dense, Activation, Input, Concatenate
 from keras.layers.core import Flatten, Permute, Reshape, Dropout, Lambda, RepeatVector
 from keras.layers.wrappers import TimeDistributed
-from keras.layers import Merge, merge, activations
+from keras.layers import merge, activations
 from keras.layers.merge import Dot, Add
 from keras.optimizers import SGD, Adam, Adadelta
 from keras.layers.convolutional import Convolution1D, Convolution2D
@@ -22,13 +22,12 @@ import pickle
 from pymongo import MongoClient
 from scipy import sparse
 from tqdm import tqdm
-from makeit.synthetic.context.neuralnetwork import NeuralNetContextRecommender
-from makeit.context_pred.train_model_c_s_r_v2 import batch_data_generator,batch_label_generator,load_and_partition_data
-import makeit.global_config as gc
+from neuralnetwork import NeuralNetContextRecommender
+from train_model_c_s_r_deploy import batch_data_generator,batch_label_generator,load_and_partition_data
 import datetime
 import pandas as pd
 from sklearn.metrics import mean_squared_error as mse
-from makeit.context_pred.solvent_similarity_calculator import SolventSimCalc, is_similar_reagent
+# from solvent_similarity_calculator import SolventSimCalc, is_similar_reagent
 import random
 # def is_similar_reagent(rgt1, rgt2):
 # 	list_of_metal_atoms = ['Sc','Ti','V','Cr','Mn','Fe','Co','Ni','Cu','Zn','Y','Zr','Nb','Mo','Tc','Ru','Rh','Pd','Ag',\
@@ -165,33 +164,73 @@ list_of_full_metal_names = ['Scandium',
 							'Nobelium',
 							'Lawrencium',
 							]
+def is_similar_reagent(rgt1, rgt2,list_of_metal_atoms,list_of_full_metal_names):
+	if rgt1 == rgt2:
+		return True
+	elif 'Reaxys ID' in rgt1 or 'Reaxys ID' in rgt2:
+		return False	
+	else:
+		#if have metal atoms compare the 
+		rgt1_metal = 100
+		rgt2_metal = 101
+		if any(metal in rgt1 for metal in list_of_full_metal_names):
+			rgt1_metal = [list_of_full_metal_names.index(metal) for metal in list_of_full_metal_names if metal in rgt1]
+		elif any(metal in rgt1 for metal in list_of_metal_atoms):
+			rgt1_metal = [list_of_metal_atoms.index(metal) for metal in list_of_metal_atoms if metal in rgt1]
+		
+		if any(metal in rgt2 for metal in list_of_full_metal_names):
+			rgt2_metal = [list_of_full_metal_names.index(metal) for metal in list_of_full_metal_names if metal in rgt2]
+		elif any(metal in rgt2 for metal in list_of_metal_atoms):
+			rgt2_metal = [list_of_metal_atoms.index(metal) for metal in list_of_metal_atoms if metal in rgt2]
+
+		if rgt1_metal == rgt2_metal:
+			return True
+
+		if 'Reaxys' in rgt1 or 'Reaxys' in rgt2:
+			return False
+		try:
+			mol1 = Chem.MolFromSmiles(rgt1)
+			mol2 = Chem.MolFromSmiles(rgt2)
+			fp1 = FingerprintMols.FingerprintMol(mol1)
+			fp2 = FingerprintMols.FingerprintMol(mol2)
+		except:
+			print('cannot calculate fp')
+			return False
+		if not any(list(fp1)) or not any(list(fp2)):
+			return False
+		similarity = DataStructs.FingerprintSimilarity(fp1,fp2)
+		if similarity >=1.0:
+			return True
+		else:
+			return False
 # print(is_similar_reagent('[Na+].[OH-]','[Li+].[OH-]',list_of_metal_atoms,list_of_full_metal_names))
 # print(is_similar_reagent('Palladium','Pd',list_of_metal_atoms,list_of_full_metal_names))
 # print(is_similar_reagent('Cl','Br',list_of_metal_atoms,list_of_full_metal_names))
 
 
 
-client = ###
+# client = ###
 
-db = client['prediction']
-reaxys_db = client['reaxys_v2']
-reaction_db = reaxys_db['reactions']
+# db = client['prediction']
+# reaxys_db = client['reaxys_v2']
+# reaction_db = reaxys_db['reactions']
 
-db_client = ###
-sdb = db_client[gc.SOLVENTS['database']]
-SOLVENT_DB = sdb[gc.SOLVENTS['collection']]
+# db_client = ###
+# sdb = db_client[gc.SOLVENTS['database']]
+# SOLVENT_DB = sdb[gc.SOLVENTS['collection']]
 # print(SOLVENT_DB.find_one({}))
 ##load context recommender
 cont = NeuralNetContextRecommender()
     # cont.load_nn_model(model_path = "/home/hanyug/Make-It/makeit/context_pred/model/c_s_r_fullset/model.json", info_path = "/home/hanyug/Make-It/makeit/context_pred/preprocessed_data/separate/fullset2048/", weights_path="/home/hanyug/Make-It/makeit/context_pred/model/c_s_r_fullset/weights.h5")
-cont.load_nn_model(model_path=gc.NEURALNET_CONTEXT_REC['model_path'], info_path=gc.NEURALNET_CONTEXT_REC[
-                   'info_path'], weights_path=gc.NEURALNET_CONTEXT_REC['weights_path'])
+cont.load_nn_model(model_path="/home/hanyug/Make-It/makeit/data/context/NeuralNet_Cont_Model/model.json", 
+        info_path="/home/hanyug/Make-It/makeit/data/context/NeuralNet_Cont_Model/", 
+        weights_path="/home/hanyug/Make-It/makeit/data/context/NeuralNet_Cont_Model/weights.h5")
 # cont.load_nn_model(model_path="/home/hanyug/Make-It/makeit/context_pred/model/test/model.json", info_path=gc.NEURALNET_CONTEXT_REC[
 #                    'info_path'], weights_path="/home/hanyug/Make-It/makeit/context_pred/model/test/weights.h5")
 
 
-simcal = SolventSimCalc()
-simcal.load_params(SOLVENT_DB)
+# simcal = SolventSimCalc()
+# simcal.load_params(SOLVENT_DB)
 
 rxn_id_file = "/data/hanyu/preprocessed_data/separate/fullset_rearrange_test_chiral/rxn_ids.pickle"
 pfp_mtx_file = "/data/hanyu/preprocessed_data/separate/fullset_rearrange_test_chiral/pfp_mtx.npz"
@@ -369,7 +408,7 @@ null_model_combos = [['','','','',''],
 
 pct = 0.01
 # data['test_nb_samples']
-for i in tqdm(range(data['test_nb_samples'])):
+for i in tqdm(range(100)):
 	#generate a random number and decide whether or not to skip this item
 	# rn = random.uniform(0,1)
 	(x, y_true) = data['test_generator'].next()
@@ -482,8 +521,10 @@ for i in tqdm(range(data['test_nb_samples'])):
 		pred_true_match[4] = (context_combos[j][4] == true_context[4])
 		pred_true_similar = [0]*5
 		pred_true_similar[0] = is_similar_reagent(true_context_smiles[0],pred_context_smiles[0],list_of_metal_atoms,list_of_full_metal_names)
-		pred_true_similar[1] = simcal.is_similar_solvent(true_context_smiles[1],pred_context_smiles[1],0.303)
-		pred_true_similar[2] = simcal.is_similar_solvent(true_context_smiles[2],pred_context_smiles[2],0.303)
+		pred_true_similar[1] = 1
+		pred_true_similar[2] = 1
+		# pred_true_similar[1] = simcal.is_similar_solvent(true_context_smiles[1],pred_context_smiles[1],0.303)
+		# pred_true_similar[2] = simcal.is_similar_solvent(true_context_smiles[2],pred_context_smiles[2],0.303)
 		pred_true_similar[3] = is_similar_reagent(true_context_smiles[3],pred_context_smiles[3],list_of_metal_atoms,list_of_full_metal_names)
 		pred_true_similar[4] = is_similar_reagent(true_context_smiles[4],pred_context_smiles[4],list_of_metal_atoms,list_of_full_metal_names)
 
@@ -503,8 +544,11 @@ for i in tqdm(range(data['test_nb_samples'])):
 		null_true_match[4] = (null_model_combos[j][4] == true_context_smiles[4])
 		null_true_similar = [0]*5
 		null_true_similar[0] = is_similar_reagent(true_context_smiles[0],null_model_combos[j][0],list_of_metal_atoms,list_of_full_metal_names)
-		null_true_similar[1] = simcal.is_similar_solvent(true_context_smiles[1],null_model_combos[j][1],0.303)
-		null_true_similar[2] = simcal.is_similar_solvent(true_context_smiles[2],null_model_combos[j][2],0.303)
+		null_true_similar[1] = 1
+		null_true_similar[2] = 1
+		# null_true_similar[1] = simcal.is_similar_solvent(true_context_smiles[1],null_model_combos[j][1],0.303)
+		# null_true_similar[2] = simcal.is_similar_solvent(true_context_smiles[2],null_model_combos[j][2],0.303)
+
 		null_true_similar[3] = is_similar_reagent(true_context_smiles[3],null_model_combos[j][3],list_of_metal_atoms,list_of_full_metal_names)
 		null_true_similar[4] = is_similar_reagent(true_context_smiles[4],null_model_combos[j][4],list_of_metal_atoms,list_of_full_metal_names)
 

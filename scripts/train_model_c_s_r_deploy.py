@@ -21,7 +21,7 @@ from keras.models import Sequential, Model, model_from_json
 from keras.layers import Dense, Activation, Input, Concatenate
 from keras.layers.core import Flatten, Permute, Reshape, Dropout, Lambda, RepeatVector
 from keras.layers.wrappers import TimeDistributed
-from keras.layers import Merge, merge, activations
+from keras.layers import merge, activations
 from keras.layers.merge import Dot, Add
 from keras.optimizers import SGD, Adam, Adadelta
 from keras.layers.convolutional import Convolution1D, Convolution2D
@@ -53,12 +53,12 @@ import datetime
 lg = RDLogger.logger()
 lg.setLevel(RDLogger.CRITICAL)
 
-client = ####mongo database
+client = None####mongo database
 
-db = client['reaxys_v2']
+# db = client['reaxys_v2']
 
-chemical_db = db['chemicals']
-reaction_db = db['reactions']
+# chemical_db = db['chemicals']
+# reaction_db = db['reactions']
 
 def set_keras_backend(backend):
 	if K.backend() != backend:

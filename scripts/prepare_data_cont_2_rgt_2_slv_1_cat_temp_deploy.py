@@ -4,9 +4,6 @@ from rdkit.Chem import AllChem
 import pickle
 import pandas as pd
 from tqdm import tqdm
-# from makeit.predict import summarize_reaction_outcome
-# from makeit.embedding import descriptors
-# from makeit.
 from multiprocessing import Manager, Queue, Process
 import Queue as VanillaQueue
 import time

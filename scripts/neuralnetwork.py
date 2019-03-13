@@ -1,17 +1,51 @@
-import makeit.global_config as gc
 import numpy as np
 from keras.models import model_from_json
 from keras import backend as K
 import makeit.utilities.fingerprinting as fp
-from makeit.utilities.io.logger import MyLogger
-from makeit.interfaces.context_recommender import ContextRecommender
 from scipy import stats
 import pickle
 from rdkit import Chem
+from rdkit.Chem import AllChem,DataStructs
+import numpy as np
 contextRecommender_loc = 'contextRecommender'
 
+def create_rxn_Morgan2FP_separately(rsmi, psmi, rxnfpsize=16384, pfpsize=16384, useFeatures=False, calculate_rfp=True, useChirality=False):
+    # Similar as the above function but takes smiles separately and returns pfp and rfp separately
 
-class NeuralNetContextRecommender(ContextRecommender):
+    rsmi = rsmi.encode('utf-8')
+    psmi = psmi.encode('utf-8')
+    try:
+        mol = Chem.MolFromSmiles(rsmi)
+    except Exception as e:
+        print(e)
+        return
+    try:
+        fp_bit = AllChem.GetMorganFingerprintAsBitVect(
+            mol=mol, radius=2, nBits=rxnfpsize, useFeatures=useFeatures, useChirality=useChirality)
+        fp = np.empty(rxnfpsize, dtype='float32')
+        DataStructs.ConvertToNumpyArray(fp_bit, fp)
+    except Exception as e:
+        print("Cannot build reactant fp due to {}".format(e))
+        return
+    rfp = fp
+
+    try:
+        mol = Chem.MolFromSmiles(psmi)
+    except Exception as e:
+        return
+    try:
+        fp_bit = AllChem.GetMorganFingerprintAsBitVect(
+            mol=mol, radius=2, nBits=pfpsize, useFeatures=useFeatures, useChirality=useChirality)
+        fp = np.empty(pfpsize, dtype='float32')
+        DataStructs.ConvertToNumpyArray(fp_bit, fp)
+    except Exception as e:
+        print("Cannot build product fp due to {}".format(e))
+        return
+    pfp = fp
+    return [pfp, rfp]
+
+
+class NeuralNetContextRecommender():
     """Reaction condition predictor based on Nearest Neighbor method"""
 
     def __init__(self, max_contexts=10, singleSlvt=True, with_smiles=True):
@@ -32,22 +66,18 @@ class NeuralNetContextRecommender(ContextRecommender):
         self.max_context = 2
         self.fp_size = 2048
 
-    def load(self, model_path=gc.NEURALNET_CONTEXT_REC['model_path'], info_path=gc.NEURALNET_CONTEXT_REC[
-                       'info_path'], weights_path=gc.NEURALNET_CONTEXT_REC['weights_path']):
+    def load(self, model_path='', info_path='', weights_path=''):
         # for the neural net model, info path points to the encoders
         self.load_nn_model(model_path, info_path, weights_path)
 
-        MyLogger.print_and_log(
-            'Nerual network context recommender has been loaded.', contextRecommender_loc)
+        print('Nerual network context recommender has been loaded.')
 
     def load_nn_model(self, model_path="", info_path="", weights_path=""):
 
         if not model_path:
-            MyLogger.print_and_log(
-                'Cannot load neural net context recommender without a specific path to the model. Exiting...', contextRecommender_loc, level=3)
+            print('Cannot load neural net context recommender without a specific path to the model. Exiting...')
         if not info_path:
-            MyLogger.print_and_log(
-                'Cannot load nerual net context recommender without a specific path to the model info. Exiting...', contextRecommender_loc, level=3)
+            print('Cannot load nerual net context recommender without a specific path to the model info. Exiting...')
 
         ###load model##############
         # load json and create model
@@ -144,7 +174,7 @@ class NeuralNetContextRecommender(ContextRecommender):
                     atom in prd_mol.GetAtoms() if atom.HasProp('molAtomMapNumber')]
             rsmi = Chem.MolToSmiles(rct_mol, isomericSmiles=True)
             psmi = Chem.MolToSmiles(prd_mol, isomericSmiles=True)
-            [pfp, rfp] = fp.create_rxn_Morgan2FP_separately(
+            [pfp, rfp] = create_rxn_Morgan2FP_separately(
                 rsmi, psmi, rxnfpsize=self.fp_size, pfpsize=self.fp_size, useFeatures=False, calculate_rfp=True, useChirality=True)
             pfp = pfp.reshape(1, self.fp_size)
             rfp = rfp.reshape(1, self.fp_size)
@@ -165,9 +195,6 @@ class NeuralNetContextRecommender(ContextRecommender):
                 return top_combos[:n]
 
         except Exception as e:
-
-            # MyLogger.print_and_log('Failed for reaction {} because {}. Returning None.'.format(
-            #     rxn, e), contextRecommender_loc, level=2)
             print('Failed for reaction {} because {}. Returning None.'.format(
                 rxn, e), contextRecommender_loc)
             return [[]]
@@ -193,7 +220,7 @@ class NeuralNetContextRecommender(ContextRecommender):
                         atom in prd_mol.GetAtoms() if atom.HasProp('molAtomMapNumber')]
                 rsmi = Chem.MolToSmiles(rct_mol, isomericSmiles=True)
                 psmi = Chem.MolToSmiles(prd_mol, isomericSmiles=True)
-                [pfp, rfp] = fp.create_rxn_Morgan2FP_separately(
+                [pfp, rfp] = create_rxn_Morgan2FP_separately(
                     rsmi, psmi, rxnfpsize=self.fp_size, pfpsize=self.fp_size, useFeatures=False, calculate_rfp=True, useChirality=True)
                 pfp = pfp.reshape(1, self.fp_size)
                 rfp = rfp.reshape(1, self.fp_size)
@@ -209,8 +236,7 @@ class NeuralNetContextRecommender(ContextRecommender):
                     inputs=inputs, c1_rank_thres=1, s1_rank_thres=3, s2_rank_thres=1, r1_rank_thres=4, r2_rank_thres=1)
                 contexts.append(top_combos[:n])
             except Exception as e:
-                MyLogger.print_and_log('Failed for reaction {} because {}. Returning None.'.format(
-                    rxn, e), contextRecommender_loc, level=2)
+                print('Failed for reaction {} because {}. Returning None.'.format(rxn, e))
         return contexts
 
     def predict_top_combos(self, inputs, return_categories_only = False, c1_rank_thres=2, s1_rank_thres=3, s2_rank_thres=1, r1_rank_thres=3, r2_rank_thres=1):
@@ -371,7 +397,8 @@ class NeuralNetContextRecommender(ContextRecommender):
 if __name__ == '__main__':
     cont = NeuralNetContextRecommender()
 
-    cont.load_nn_model(model_path=gc.NEURALNET_CONTEXT_REC['model_path'], info_path=gc.NEURALNET_CONTEXT_REC[
-                       'info_path'], weights_path=gc.NEURALNET_CONTEXT_REC['weights_path'])
-    # print(cont.get_n_conditions('CC1(C)OBOC1(C)C.Cc1ccc(Br)cc1>>Cc1cccc(B2OC(C)(C)C(C)(C)O2)c1', 10, with_smiles=False, return_scores=True))
-    print(cont.name_to_category('c1','Reaxys Name palladium on activated charcoal'))
+    cont.load_nn_model(model_path="/home/hanyug/Make-It/makeit/data/context/NeuralNet_Cont_Model/model.json", 
+        info_path="/home/hanyug/Make-It/makeit/data/context/NeuralNet_Cont_Model/", 
+        weights_path="/home/hanyug/Make-It/makeit/data/context/NeuralNet_Cont_Model/weights.h5")
+    print(cont.get_n_conditions('CC1(C)OBOC1(C)C.Cc1ccc(Br)cc1>>Cc1cccc(B2OC(C)(C)C(C)(C)O2)c1', 10, with_smiles=False, return_scores=True))
+    # print(cont.name_to_category('c1','Reaxys Name palladium on activated charcoal'))
